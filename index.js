@@ -3,6 +3,7 @@ const aws = require('aws-sdk');
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const { backOff } = require('exponential-backoff');
 
 // The max time that a GitHub action is allowed to run is 6 hours.
 // That seems like a reasonable default to use if no role duration is defined.
@@ -303,7 +304,7 @@ async function run() {
 
     // Get role credentials if configured to do so
     if (roleToAssume) {
-      const roleCredentials = await assumeRole({
+      const exec = () => assumeRole({
         sourceAccountId,
         region,
         roleToAssume,
@@ -314,6 +315,10 @@ async function run() {
         webIdentityTokenFile,
         webIdentityToken
       });
+      const roleCredentials = await backOff(
+        exec,
+        { numOfAttempts: 10, delayFirstAttempt: true, startingDelay: 100 }
+      );
       exportCredentials(roleCredentials);
       // We need to validate the credentials in 2 of our use-cases
       // First: self-hosted runners. If the GITHUB_ACTIONS environment variable
